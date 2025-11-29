@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+functions/node_modules/
+
+# Build output
+functions/lib/
+dist/
+build/
+
+# Coverage
+coverage/
+functions/coverage/
+.nyc_output/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+functions/.env
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Flutter
+.dart_tool/
+.packages
+flutter_example/.dart_tool/
+flutter_example/.packages
+
+# Temporary files
+tmp/
+.tmp/

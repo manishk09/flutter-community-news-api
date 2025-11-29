@@ -1,0 +1,81 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+# Limit GITHUB_TOKEN permissions to read-only for security
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install dependencies
+        working-directory: functions
+        run: npm ci || npm install
+
+      - name: Run linter
+        working-directory: functions
+        run: npm run lint --if-present
+        continue-on-error: true
+
+      - name: Run tests with coverage
+        working-directory: functions
+        run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov
+        env:
+          NEWS_API_KEY: test-api-key
+          OPENAI_API_KEY: test-openai-key
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-${{ matrix.node-version }}
+          path: functions/coverage/
+          retention-days: 30
+
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install dependencies
+        working-directory: functions
+        run: npm ci || npm install
+
+      - name: Run ESLint
+        working-directory: functions
+        run: npm run lint --if-present
+        continue-on-error: true
