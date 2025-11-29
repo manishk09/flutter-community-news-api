@@ -5,6 +5,9 @@
 
 const { OpenAI } = require("openai");
 
+// Configurable model (can be overridden via environment variable)
+const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
 /**
  * Initialize OpenAI client
  * @param {string} apiKey - OpenAI API key
@@ -24,9 +27,10 @@ function createOpenAIClient(apiKey) {
  * Summarize a single article using OpenAI
  * @param {Object} article - Article object with title and description
  * @param {OpenAI} client - OpenAI client instance
+ * @param {string} model - OpenAI model to use
  * @returns {Promise<string>} Summary text (60-80 words)
  */
-async function summarizeArticle(article, client) {
+async function summarizeArticle(article, client, model = DEFAULT_MODEL) {
   if (!article || (!article.title && !article.description)) {
     return article?.description || "";
   }
@@ -36,7 +40,7 @@ async function summarizeArticle(article, client) {
 Description: ${article.description || ""}`;
 
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: model,
       messages: [
         {
           role: "system",
@@ -95,31 +99,35 @@ async function summarizeArticles(articles, apiKey, enableSummarization = true) {
     }));
   }
 
-  const summarizedArticles = [];
-
-  for (const article of articles) {
+  // Parallelize summarization using Promise.allSettled for better performance
+  const summarizePromises = articles.map(async (article) => {
     try {
       const summary = await summarizeArticle(article, client);
-      summarizedArticles.push({
+      return {
         title: article.title,
         url: article.url,
         summary: summary,
         image: article.image,
         publishedAt: article.publishedAt,
-      });
+      };
     } catch {
       // On error, use description as fallback
-      summarizedArticles.push({
+      return {
         title: article.title,
         url: article.url,
         summary: article.description || "",
         image: article.image,
         publishedAt: article.publishedAt,
-      });
+      };
     }
-  }
+  });
 
-  return summarizedArticles;
+  const results = await Promise.allSettled(summarizePromises);
+
+  // Extract values from settled promises
+  return results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
 }
 
 module.exports = {

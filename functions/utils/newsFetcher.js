@@ -8,6 +8,10 @@ const axios = require("axios");
 const GNEWS_BASE_URL = "https://gnews.io/api/v4/search";
 const NEWSAPI_BASE_URL = "https://newsapi.org/v2/everything";
 
+// Configurable constants (can be overridden via environment variables)
+const DEFAULT_QUERY_LIMIT = parseInt(process.env.NEWS_QUERY_LIMIT, 10) || 5;
+const DEFAULT_MAX_RESULTS = parseInt(process.env.NEWS_MAX_RESULTS_PER_QUERY, 10) || 3;
+
 /**
  * Fetch news articles for a single query from GNews API
  * @param {string} query - Search query
@@ -89,9 +93,16 @@ async function fetchFromNewsAPI(query, apiKey, pageSize = 5) {
  * @param {string} apiKey - News API key
  * @param {string} provider - API provider ('gnews' or 'newsapi')
  * @param {number} maxResultsPerQuery - Max results per query
+ * @param {number} queryLimit - Maximum number of queries to process
  * @returns {Promise<Object[]>} Deduplicated array of news articles
  */
-async function fetchNewsForQueries(queries, apiKey, provider = "gnews", maxResultsPerQuery = 3) {
+async function fetchNewsForQueries(
+    queries,
+    apiKey,
+    provider = "gnews",
+    maxResultsPerQuery = DEFAULT_MAX_RESULTS,
+    queryLimit = DEFAULT_QUERY_LIMIT,
+) {
   if (!queries || queries.length === 0) {
     return [];
   }
@@ -100,32 +111,37 @@ async function fetchNewsForQueries(queries, apiKey, provider = "gnews", maxResul
     throw new Error("NEWS_API_KEY is not configured");
   }
 
+  // Limit queries to avoid rate limiting (configurable)
+  const limitedQueries = queries.slice(0, queryLimit);
+
+  // Fetch all queries in parallel using Promise.allSettled
+  const fetchPromises = limitedQueries.map(async (query) => {
+    try {
+      if (provider === "newsapi") {
+        return await fetchFromNewsAPI(query, apiKey, maxResultsPerQuery);
+      } else {
+        return await fetchFromGNews(query, apiKey, maxResultsPerQuery);
+      }
+    } catch (error) {
+      console.error(`Error fetching news for query "${query}":`, error.message);
+      return []; // Return empty array on failure
+    }
+  });
+
+  const results = await Promise.allSettled(fetchPromises);
+
+  // Combine and deduplicate results
   const allArticles = [];
   const seenUrls = new Set();
 
-  // Limit to first 5 queries to avoid rate limiting
-  const limitedQueries = queries.slice(0, 5);
-
-  for (const query of limitedQueries) {
-    try {
-      let articles;
-
-      if (provider === "newsapi") {
-        articles = await fetchFromNewsAPI(query, apiKey, maxResultsPerQuery);
-      } else {
-        articles = await fetchFromGNews(query, apiKey, maxResultsPerQuery);
-      }
-
-      // Deduplicate by URL
-      for (const article of articles) {
+  for (const result of results) {
+    if (result.status === "fulfilled" && Array.isArray(result.value)) {
+      for (const article of result.value) {
         if (article.url && !seenUrls.has(article.url)) {
           seenUrls.add(article.url);
           allArticles.push(article);
         }
       }
-    } catch (error) {
-      console.error(`Error fetching news for query "${query}":`, error.message);
-      // Continue with other queries even if one fails
     }
   }
 

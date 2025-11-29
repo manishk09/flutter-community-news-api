@@ -277,15 +277,18 @@ The API builds search queries based on user input:
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEWS_API_KEY` | GNews API key | Yes |
-| `OPENAI_API_KEY` | OpenAI API key for summarization | No |
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `NEWS_API_KEY` | GNews API key | Yes | - |
+| `OPENAI_API_KEY` | OpenAI API key for summarization | No | - |
+| `OPENAI_MODEL` | OpenAI model for summarization | No | `gpt-4o-mini` |
+| `NEWS_QUERY_LIMIT` | Max number of search queries | No | `5` |
+| `NEWS_MAX_RESULTS_PER_QUERY` | Max results per query | No | `3` |
 
 ### Firebase Config
 
 ```bash
-# Set variables
+# Set required variables
 firebase functions:config:set news.key="YOUR_GNEWS_API_KEY"
 firebase functions:config:set openai.key="YOUR_OPENAI_KEY"
 

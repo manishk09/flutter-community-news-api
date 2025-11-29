@@ -6,9 +6,15 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# Limit GITHUB_TOKEN permissions to read-only for security
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     strategy:
       matrix:
@@ -51,6 +57,8 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
