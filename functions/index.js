@@ -30,6 +30,7 @@ function getApiKeys() {
 
 /**
  * Validate the incoming request data
+ * Supports both new 'user' format and legacy format for backward compatibility
  * @param {Object} data - Request data
  * @returns {Object} Validation result with isValid boolean and error message
  */
@@ -41,14 +42,15 @@ function validateRequest(data) {
     };
   }
 
-  if (!data.location) {
+  // Support both new 'user.location' and legacy 'location' formats
+  const location = data.user?.location || data.location;
+
+  if (!location) {
     return {
       isValid: false,
       error: "Location is required. Please provide city, state, and country.",
     };
   }
-
-  const { location } = data;
 
   if (!location.city && !location.state && !location.country) {
     return {
@@ -63,7 +65,21 @@ function validateRequest(data) {
 /**
  * Main callable function to get personalized news
  *
- * Expected input:
+ * Expected input (new format):
+ * {
+ *   "user": {
+ *     "location": { "city": "Ramgarh", "state": "Jharkhand", "country": "India" },
+ *     "businessDetails": {
+ *       "type": "Bakery",
+ *       "industry": "Food & Beverage",
+ *       "keywords": ["bakery", "small business", "MSME"]
+ *     },
+ *     "tags": ["dalit", "sc", "st", "bahujan"],
+ *     "language": "en"
+ *   }
+ * }
+ *
+ * Legacy format (still supported):
  * {
  *   "location": { "city": "Ramgarh", "state": "Jharkhand", "country": "India" },
  *   "businessInterests": ["Bakery", "Gift Studio"],
@@ -73,13 +89,16 @@ function validateRequest(data) {
  * Returns:
  * {
  *   "status": "success",
- *   "results": [
+ *   "news": [
  *     {
  *       "title": "",
  *       "url": "",
  *       "summary": "",
  *       "image": "",
- *       "publishedAt": ""
+ *       "publishedAt": "",
+ *       "source": "",
+ *       "coverage": "local | national | international",
+ *       "categories": ["dalit", "business", "policy"]
  *     }
  *   ]
  * }
@@ -114,21 +133,34 @@ exports.getNews = functions.https.onCall(async (data) => {
     if (queries.length === 0) {
       return {
         status: "success",
-        results: [],
+        news: [],
+        results: [], // Keep for backward compatibility
         message: "No search queries could be generated from the provided data.",
       };
     }
 
-    // Fetch news articles
+    // Get location for coverage classification
+    const location = data.user?.location || data.location;
+
+    // Fetch news articles with community relevance boosting
     let articles;
     try {
-      articles = await fetchNewsForQueries(queries, newsApiKey);
+      articles = await fetchNewsForQueries(
+          queries,
+          newsApiKey,
+          "gnews", // provider
+          3, // maxResultsPerQuery
+          15, // queryLimit - increased to handle more queries
+          location,
+          true, // applyRelevanceBoosting
+      );
     } catch (fetchError) {
       console.error("Error fetching news:", fetchError.message);
       return {
         status: "error",
         error: "Failed to fetch news articles. Please try again later.",
-        results: [],
+        news: [],
+        results: [], // Keep for backward compatibility
       };
     }
 
@@ -136,7 +168,8 @@ exports.getNews = functions.https.onCall(async (data) => {
     if (!articles || articles.length === 0) {
       return {
         status: "success",
-        results: [],
+        news: [],
+        results: [], // Keep for backward compatibility
         message: "No news articles found for your criteria.",
       };
     }
@@ -151,7 +184,8 @@ exports.getNews = functions.https.onCall(async (data) => {
 
     return {
       status: "success",
-      results: summarizedArticles,
+      news: summarizedArticles, // New field name
+      results: summarizedArticles, // Keep for backward compatibility
       queriesUsed: queries.length,
       totalArticles: summarizedArticles.length,
     };
@@ -211,19 +245,32 @@ exports.getNewsHttp = functions.https.onRequest(async (req, res) => {
     if (queries.length === 0) {
       res.json({
         status: "success",
-        results: [],
+        news: [],
+        results: [], // Keep for backward compatibility
         message: "No search queries could be generated.",
       });
       return;
     }
 
-    // Fetch news
-    const articles = await fetchNewsForQueries(queries, newsApiKey);
+    // Get location for coverage classification
+    const location = data.user?.location || data.location;
+
+    // Fetch news with community relevance boosting
+    const articles = await fetchNewsForQueries(
+        queries,
+        newsApiKey,
+        "gnews", // provider
+        3, // maxResultsPerQuery
+        15, // queryLimit
+        location,
+        true, // applyRelevanceBoosting
+    );
 
     if (!articles || articles.length === 0) {
       res.json({
         status: "success",
-        results: [],
+        news: [],
+        results: [], // Keep for backward compatibility
         message: "No news articles found.",
       });
       return;
@@ -239,7 +286,8 @@ exports.getNewsHttp = functions.https.onRequest(async (req, res) => {
 
     res.json({
       status: "success",
-      results: summarizedArticles,
+      news: summarizedArticles, // New field name
+      results: summarizedArticles, // Keep for backward compatibility
       queriesUsed: queries.length,
       totalArticles: summarizedArticles.length,
     });

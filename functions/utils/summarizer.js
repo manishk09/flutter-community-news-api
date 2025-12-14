@@ -83,8 +83,14 @@ async function summarizeArticles(articles, apiKey, enableSummarization = true) {
   // If summarization is disabled or no API key, return articles with description as summary
   if (!enableSummarization || !apiKey) {
     return articles.map((article) => ({
-      ...article,
+      title: article.title,
+      url: article.url,
       summary: article.description || "",
+      image: article.image,
+      publishedAt: article.publishedAt,
+      source: article.source,
+      coverage: article.coverage || "national",
+      categories: article.categories || [],
     }));
   }
 
@@ -94,8 +100,14 @@ async function summarizeArticles(articles, apiKey, enableSummarization = true) {
   } catch {
     // If client creation fails, return articles with description as summary
     return articles.map((article) => ({
-      ...article,
+      title: article.title,
+      url: article.url,
       summary: article.description || "",
+      image: article.image,
+      publishedAt: article.publishedAt,
+      source: article.source,
+      coverage: article.coverage || "national",
+      categories: article.categories || [],
     }));
   }
 
@@ -109,6 +121,9 @@ async function summarizeArticles(articles, apiKey, enableSummarization = true) {
         summary: summary,
         image: article.image,
         publishedAt: article.publishedAt,
+        source: article.source,
+        coverage: article.coverage || "national",
+        categories: article.categories || [],
       };
     } catch {
       // On error, use description as fallback
@@ -118,6 +133,9 @@ async function summarizeArticles(articles, apiKey, enableSummarization = true) {
         summary: article.description || "",
         image: article.image,
         publishedAt: article.publishedAt,
+        source: article.source,
+        coverage: article.coverage || "national",
+        categories: article.categories || [],
       };
     }
   });

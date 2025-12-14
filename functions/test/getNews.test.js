@@ -6,6 +6,8 @@
 
 const {
   buildLocalQueries,
+  buildNationalQueries,
+  buildInternationalQueries,
   buildBusinessQueries,
   buildCommunityQueries,
   buildAllQueries,
@@ -26,6 +28,14 @@ const {
 const {
   summarizeArticles,
 } = require("../utils/summarizer");
+
+const {
+  calculateRelevanceScore,
+  isCommunityRelevant,
+  classifyArticle,
+  boostAndSortArticles,
+  determineCoverage,
+} = require("../utils/communityRelevanceBooster");
 
 describe("Query Builder Tests", () => {
   describe("buildLocalQueries", () => {
@@ -112,14 +122,22 @@ describe("Query Builder Tests", () => {
       expect(queries).toContain("Dalit empowerment initiatives");
     });
 
-    test("should handle empty string", () => {
+    test("should handle empty string and include mandatory queries", () => {
       const queries = buildCommunityQueries("");
-      expect(queries).toEqual([]);
+      // Should always include mandatory community queries
+      expect(queries).toContain("Dalit news India");
+      expect(queries).toContain("SC ST schemes");
+      expect(queries).toContain("Bahujan movement");
+      expect(queries).toContain("Ambedkar news");
+      expect(queries).toContain("Social justice India");
     });
 
-    test("should handle null input", () => {
+    test("should handle null input and include mandatory queries", () => {
       const queries = buildCommunityQueries(null);
-      expect(queries).toEqual([]);
+      // Should always include mandatory community queries
+      expect(queries).toContain("Dalit news India");
+      expect(queries).toContain("SC ST schemes");
+      expect(queries.length).toBeGreaterThan(0);
     });
   });
 
@@ -414,5 +432,363 @@ describe("Error Handling Tests", () => {
 
     // Since the implementation catches errors per query, it should return empty
     expect(articles).toEqual([]);
+  });
+});
+
+describe("Enhanced API Tests - New User Schema", () => {
+  describe("New user input format", () => {
+    test("should accept new user format with enhanced details", () => {
+      const data = {
+        user: {
+          location: {
+            city: "Ramgarh",
+            state: "Jharkhand",
+            country: "India",
+          },
+          businessDetails: {
+            type: "Bakery",
+            industry: "Food & Beverage",
+            keywords: ["bakery", "small business", "MSME"],
+          },
+          tags: ["dalit", "sc", "st", "bahujan"],
+          language: "en",
+        },
+      };
+
+      const queries = buildAllQueries(data);
+
+      // Should include local queries
+      expect(queries).toContain("Ramgarh news");
+
+      // Should include national queries
+      expect(queries).toContain("India national headlines");
+
+      // Should include international queries
+      expect(queries).toContain("world headlines");
+
+      // Should include business queries with new format
+      expect(queries.some((q) => q.includes("Bakery"))).toBe(true);
+
+      // Should include mandatory community queries
+      expect(queries).toContain("Dalit news India");
+      expect(queries).toContain("SC ST schemes");
+    });
+
+    test("should maintain backward compatibility with legacy format", () => {
+      const data = {
+        location: { city: "Mumbai", state: "Maharashtra", country: "India" },
+        businessInterests: ["Bakery", "Gift Studio"],
+        community: "Dalit empowerment",
+      };
+
+      const queries = buildAllQueries(data);
+
+      // Should still work with legacy format
+      expect(queries).toContain("Mumbai news");
+      expect(queries).toContain("Bakery business news");
+      expect(queries).toContain("Dalit empowerment news");
+    });
+
+    test("should handle missing business details gracefully", () => {
+      const data = {
+        user: {
+          location: {
+            city: "Delhi",
+            country: "India",
+          },
+          tags: ["dalit"],
+          language: "en",
+        },
+      };
+
+      const queries = buildAllQueries(data);
+
+      // Should still generate queries without business details
+      expect(queries).toContain("Delhi news");
+      expect(queries).toContain("Dalit news India");
+      expect(queries.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("National and International queries", () => {
+    test("should build national news queries", () => {
+      const queries = buildNationalQueries("India");
+      expect(queries).toContain("India national headlines");
+    });
+
+    test("should build international news queries", () => {
+      const queries = buildInternationalQueries();
+      expect(queries).toContain("world headlines");
+      expect(queries).toContain("international human rights news");
+    });
+
+    test("should include all coverage types in buildAllQueries", () => {
+      const data = {
+        user: {
+          location: {
+            city: "Bangalore",
+            state: "Karnataka",
+            country: "India",
+          },
+        },
+      };
+
+      const queries = buildAllQueries(data);
+
+      // Should have local queries
+      expect(queries.some((q) => q.includes("Bangalore"))).toBe(true);
+
+      // Should have national queries
+      expect(queries).toContain("India national headlines");
+
+      // Should have international queries
+      expect(queries).toContain("world headlines");
+    });
+  });
+
+  describe("Business personalization with new schema", () => {
+    test("should generate business queries from businessDetails", () => {
+      const businessDetails = {
+        type: "Bakery",
+        industry: "Food & Beverage",
+        keywords: ["bakery", "small business", "MSME"],
+      };
+
+      const queries = buildBusinessQueries(null, businessDetails, "India");
+
+      expect(queries).toContain("Bakery industry news India");
+      expect(queries).toContain("Food & Beverage trends");
+      expect(queries).toContain("bakery trends");
+      expect(queries).toContain("small business trends");
+    });
+
+    test("should support both new and legacy business formats", () => {
+      const legacyInterests = ["Tech", "Finance"];
+      const newDetails = {
+        type: "Bakery",
+        keywords: ["food"],
+      };
+
+      const queries = buildBusinessQueries(legacyInterests, newDetails, "India");
+
+      // Should include both legacy and new format queries
+      expect(queries).toContain("Tech business news");
+      expect(queries).toContain("Bakery industry news India");
+      expect(queries).toContain("food trends");
+    });
+  });
+});
+
+describe("Community Relevance Booster Tests", () => {
+  describe("calculateRelevanceScore", () => {
+    test("should calculate high score for Dalit-related article", () => {
+      const article = {
+        title: "Dalit community protests against atrocity",
+        description: "SC ST leaders demand social justice and reservation",
+      };
+
+      const score = calculateRelevanceScore(article);
+      expect(score).toBeGreaterThan(0);
+    });
+
+    test("should return zero for non-community article", () => {
+      const article = {
+        title: "General technology news",
+        description: "Latest tech updates from Silicon Valley",
+      };
+
+      const score = calculateRelevanceScore(article);
+      expect(score).toBe(0);
+    });
+
+    test("should detect various community keywords", () => {
+      const keywords = ["bahujan", "ambedkar", "scheduled caste", "untouchability"];
+
+      keywords.forEach((keyword) => {
+        const article = {
+          title: `Article about ${keyword}`,
+          description: "Related content",
+        };
+        const score = calculateRelevanceScore(article);
+        expect(score).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  describe("isCommunityRelevant", () => {
+    test("should identify community-relevant articles", () => {
+      const article = {
+        title: "Dalit empowerment initiative launched",
+        description: "New scheme for SC ST welfare",
+      };
+
+      expect(isCommunityRelevant(article)).toBe(true);
+    });
+
+    test("should identify non-relevant articles", () => {
+      const article = {
+        title: "Weather forecast for tomorrow",
+        description: "Sunny skies expected",
+      };
+
+      expect(isCommunityRelevant(article)).toBe(false);
+    });
+  });
+
+  describe("classifyArticle", () => {
+    test("should classify Dalit-related articles", () => {
+      const article = {
+        title: "Dalit protest in Delhi",
+        description: "SC community demands justice",
+      };
+
+      const categories = classifyArticle(article);
+      expect(categories).toContain("dalit");
+    });
+
+    test("should classify business articles", () => {
+      const article = {
+        title: "Small business economy grows",
+        description: "Market trends show positive growth",
+      };
+
+      const categories = classifyArticle(article);
+      expect(categories).toContain("business");
+    });
+
+    test("should classify policy articles", () => {
+      const article = {
+        title: "Government announces new scheme",
+        description: "Ministry launches policy for welfare",
+      };
+
+      const categories = classifyArticle(article);
+      expect(categories).toContain("policy");
+    });
+
+    test("should handle multiple categories", () => {
+      const article = {
+        title: "Government policy for Dalit business",
+        description: "New scheme to support SC ST entrepreneurs",
+      };
+
+      const categories = classifyArticle(article);
+      expect(categories.length).toBeGreaterThan(1);
+      expect(categories).toContain("dalit");
+      expect(categories).toContain("business");
+      expect(categories).toContain("policy");
+    });
+  });
+
+  describe("boostAndSortArticles", () => {
+    test("should rank community articles higher than generic ones", () => {
+      const articles = [
+        {
+          title: "Generic business news",
+          description: "Some business update",
+          publishedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          title: "Dalit empowerment news",
+          description: "SC ST community welfare scheme announced",
+          publishedAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+
+      const sorted = boostAndSortArticles(articles);
+
+      // Community-relevant article should be ranked higher
+      expect(sorted[0].title).toContain("Dalit");
+      expect(sorted[0].relevanceScore).toBeGreaterThan(sorted[1].relevanceScore);
+    });
+
+    test("should include relevance scores and categories", () => {
+      const articles = [
+        {
+          title: "Bahujan movement gains momentum",
+          description: "Ambedkar followers organize rally",
+          publishedAt: "2024-01-01T00:00:00Z",
+        },
+      ];
+
+      const sorted = boostAndSortArticles(articles);
+
+      expect(sorted[0]).toHaveProperty("relevanceScore");
+      expect(sorted[0]).toHaveProperty("categories");
+      expect(sorted[0].relevanceScore).toBeGreaterThan(0);
+    });
+  });
+
+  describe("determineCoverage", () => {
+    test("should classify local coverage based on city", () => {
+      const article = {
+        title: "Ramgarh local news update",
+        description: "City council meeting held",
+      };
+      const location = { city: "Ramgarh", state: "Jharkhand", country: "India" };
+
+      const coverage = determineCoverage(article, "Ramgarh news", location);
+      expect(coverage).toBe("local");
+    });
+
+    test("should classify national coverage", () => {
+      const article = {
+        title: "India national policy update",
+        description: "Government announces new initiative",
+      };
+      const location = { country: "India" };
+
+      const coverage = determineCoverage(article, "India national news", location);
+      expect(coverage).toBe("national");
+    });
+
+    test("should classify international coverage", () => {
+      const article = {
+        title: "World leaders meet at UN",
+        description: "International summit on human rights",
+      };
+
+      const coverage = determineCoverage(article, "world headlines");
+      expect(coverage).toBe("international");
+    });
+  });
+});
+
+describe("Tag-based Relevance Tests", () => {
+  test("should always include mandatory community queries", () => {
+    const data = {
+      user: {
+        location: { country: "India" },
+        // No tags provided
+      },
+    };
+
+    const queries = buildAllQueries(data);
+
+    // Mandatory queries should always be present
+    expect(queries).toContain("Dalit news India");
+    expect(queries).toContain("SC ST schemes");
+    expect(queries).toContain("Bahujan movement");
+    expect(queries).toContain("Ambedkar news");
+    expect(queries).toContain("Social justice India");
+  });
+
+  test("should include user-provided tags in addition to mandatory ones", () => {
+    const data = {
+      user: {
+        location: { country: "India" },
+        tags: ["dalit", "obc"],
+      },
+    };
+
+    const queries = buildAllQueries(data);
+
+    // Should include user tags
+    expect(queries).toContain("dalit news India");
+    expect(queries).toContain("obc news India");
+
+    // Should also include mandatory queries
+    expect(queries).toContain("Dalit news India");
+    expect(queries).toContain("SC ST schemes");
   });
 });
